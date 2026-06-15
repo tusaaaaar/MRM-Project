@@ -1,0 +1,240 @@
+"""FastAPI application for the Credit Risk Dashboard."""
+
+from __future__ import annotations
+
+from functools import lru_cache
+from io import BytesIO
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from backend.validator import validate_dataset
+from backend.pipeline import CreditRiskPipeline, PipelineError
+from backend.dqa import build_dqa_report
+
+ALLOWED_EXTENSIONS = {".csv", ".xlsx"}
+
+app = FastAPI(
+    title="Credit Risk Dashboard API",
+    description="API for credit-risk validation, prediction, and segmentation.",
+    version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@lru_cache(maxsize=1)
+def get_pipeline() -> CreditRiskPipeline:
+    """
+    Return a singleton ``CreditRiskPipeline`` instance.
+
+    The pipeline is created on first access and reused for subsequent requests.
+    """
+    return CreditRiskPipeline()
+
+
+@app.get("/")
+def root() -> dict[str, str]:
+    """Health-check endpoint."""
+    return {"message": "Credit Risk Dashboard API Running"}
+
+
+def build_data_quality_report(validation_result: dict[str, Any]) -> dict[str, Any]:
+    """Build issue log and recommendations from a validation result."""
+    issue_log = []
+    recommendations = []
+
+    if validation_result.get("missing_columns"):
+        issue_log.append({
+            "issue": "Missing Columns",
+            "detail": f"Required column(s) absent: {', '.join(validation_result['missing_columns'])}.",
+            "severity": "Critical",
+        })
+        recommendations.append({
+            "issue": "Missing Columns",
+            "severity": "Critical",
+            "recommendation": (
+                "Schema correction required. Ensure all required columns are present "
+                "before uploading. Verify the data export process matches the expected "
+                "feature set and contact the data engineering team if columns were "
+                "recently renamed or deprecated."
+            ),
+        })
+
+    if validation_result.get("duplicate_rows", 0) > 0:
+        issue_log.append({
+            "issue": "Duplicate Rows",
+            "detail": f"{validation_result['duplicate_rows']:,} duplicate row(s) found.",
+            "severity": "High",
+        })
+        recommendations.append({
+            "issue": "Duplicate Rows",
+            "severity": "High",
+            "recommendation": (
+                "Remove duplicate records before modeling. Run a deduplication pass "
+                "using a unique key such as customer ID or account number, retaining "
+                "the most recent record per key. Investigate the data ingestion "
+                "pipeline to prevent duplicates at source."
+            ),
+        })
+
+    if validation_result.get("missing_values", 0) > 0:
+        issue_log.append({
+            "issue": "Missing Values",
+            "detail": f"{validation_result['missing_values']:,} missing value(s) detected.",
+            "severity": "Medium",
+        })
+        recommendations.append({
+            "issue": "Missing Values",
+            "severity": "Medium",
+            "recommendation": (
+                "Impute or remove missing values before modeling. Apply mean, median, "
+                "or mode imputation for numeric fields. For categorical fields, use the "
+                "most frequent value or a dedicated 'Unknown' category. If the missing "
+                "rate exceeds 40% for a column, consider excluding it from analysis."
+            ),
+        })
+
+    return {
+        "data_quality_report": validation_result,
+        "issue_log": issue_log,
+        "recommendations": recommendations,
+    }
+
+
+@app.post("/data-quality")
+async def data_quality(file: UploadFile = File(...)) -> JSONResponse:
+    """
+    Upload a dataset and return a data quality report only.
+
+    Does not execute the model pipeline, predictions, or segmentation.
+    """
+    try:
+        dataframe = await _read_uploaded_dataframe(file)
+        response_body = build_dqa_report(dataframe)
+        return JSONResponse(content=response_body)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print("ERROR:", repr(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/upload")
+async def upload_dataset(
+    file: UploadFile = File(...),
+    prediction_threshold: float = Form(0.50),
+    good_threshold: float = Form(0.30),
+    bad_threshold: float = Form(0.70),
+) -> JSONResponse:
+    """
+    Upload a credit-risk dataset and run the inference pipeline.
+
+    Accepts ``.csv`` and ``.xlsx`` files. Returns validation results, optional
+    model metrics (when the target column is present), and segment summary.
+    """
+    try:
+        dataframe = await _read_uploaded_dataframe(file)
+        result = get_pipeline().run(
+            dataframe,
+            prediction_threshold=prediction_threshold,
+            good_threshold=good_threshold,
+            bad_threshold=bad_threshold,
+        )
+        response_body = _build_response(result)
+        return JSONResponse(content=response_body)
+    except HTTPException:
+        raise
+    except PipelineError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except Exception as exc:
+        print("ERROR:", repr(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+async def _read_uploaded_dataframe(file: UploadFile) -> pd.DataFrame:
+    """
+    Validate and parse an uploaded CSV or Excel file into a dataframe.
+
+    Raises:
+        HTTPException: With status 400 when the file is invalid or unreadable.
+    """
+    filename = file.filename or ""
+    extension = Path(filename).suffix.lower()
+
+    if extension not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file type. Only CSV and XLSX files are supported.",
+        )
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+    buffer = BytesIO(content)
+
+    try:
+        if extension == ".csv":
+            dataframe = pd.read_csv(buffer)
+        else:
+            dataframe = pd.read_excel(buffer)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unable to read uploaded file: {exc}",
+        ) from exc
+
+    if dataframe.empty:
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded file does not contain any data rows.",
+        )
+
+    return dataframe
+
+
+def _build_response(result: dict[str, Any]) -> dict[str, Any]:
+    """Serialize pipeline output for JSON responses."""
+    segment_summary = result["segment_summary"]
+    segment_summary_payload = (
+        segment_summary.to_dict(orient="records")
+        if isinstance(segment_summary, pd.DataFrame)
+        else segment_summary
+    )
+
+    predictions_df = result["predictions"]
+
+    pd_values = (
+        predictions_df["probability_of_default"].round(4).tolist()
+        if "probability_of_default" in predictions_df.columns
+        else []
+    )
+
+    return {
+        "validation_report":  result["validation_report"],
+        "metrics":            result.get("metrics"),
+        "roc_data":           result.get("roc_data"),
+        "confusion_matrix":   result.get("confusion_matrix"),
+        "segment_summary":    segment_summary_payload,
+        "pd_values":          pd_values,
+        "pd_decile_analysis": result.get("pd_decile_analysis"),
+        "scorecard_data": (
+            predictions_df[
+                [col for col in ["probability_of_default", "prediction", "actual_default"]
+                 if col in predictions_df.columns]
+            ].to_dict(orient="records")
+            if "probability_of_default" in predictions_df.columns
+            else []
+        ),
+        "score_band_analysis": result.get("score_band_analysis"),
+    }
