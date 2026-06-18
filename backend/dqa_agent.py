@@ -10,8 +10,7 @@ from openai import AsyncAzureOpenAI
 
 load_dotenv()
 
-# ── 1. Structured Output Schemas (The API Contract) ───────────────────────
-# Forced JSON formatting structure that maps seamlessly to any analytics dataset.
+# ── 1. Structured Output Schemas ─────────────────────────────────────────
 
 class RemediationRecommendation(BaseModel):
     column: str = Field(description="The exact name of the column analyzed.")
@@ -24,7 +23,7 @@ class AIQualityAssessment(BaseModel):
     ai_recommendations: list[RemediationRecommendation] = Field(description="Context-aware fixing actions.")
 
 
-# ── 2. The Agent Logic ───────────────────────────────────────────────────
+# ── 2. The Dashboard Agent Logic (Generates the initial report) ──────────
 
 async def generate_agentic_dqa_insights(
     dataset_profile: dict, 
@@ -32,34 +31,26 @@ async def generate_agentic_dqa_insights(
     duplicate_log: list,
     outlier_log: list 
 ) -> dict:
-    """
-    Passes the statistical dataset report to Azure OpenAI to generate domain-agnostic risk insights.
-    """
     
-    # 1. Fetch Corporate Azure Credentials
     endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
     api_key = os.environ.get("AZURE_OPENAI_API_KEY")
     deployment_name = os.environ.get("AZURE_OPENAI_DEPLOYMENT_NAME")
     api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2024-08-01-preview")
     
-    # Safety Check: Fallback to empty dict if credentials aren't loaded yet
     if not all([endpoint, api_key, deployment_name]):
-        print("SYSTEM LOG: Missing Azure OpenAI credentials in .env file. Bypassing AI.")
+        print("SYSTEM LOG: Missing Azure OpenAI credentials. Bypassing AI.")
         return {}
 
-    # 2. Initialize the Secure Azure Client
     client = AsyncAzureOpenAI(
         azure_endpoint=endpoint,
         api_key=api_key,
         api_version=api_version
     )
 
-    # 3. THE CONTEXT DIET: Filter the data before sending to the LLM
     actionable_missing = [m for m in missing_value_log if m.get("missing_percentage", 0) > 0]
     truncated_duplicates = duplicate_log[:5] 
     actionable_outliers = outlier_log[:5] if outlier_log else [] 
 
-    # 4. THE PAYLOAD: Assemble the condensed data
     payload = {
         "profile": dataset_profile,
         "missing_data": actionable_missing,
@@ -70,7 +61,6 @@ async def generate_agentic_dqa_insights(
         }
     }
 
-    # 5. THE System PROMPT: Standard Data Science Persona
     prompt = f"""
     Analyze the following statistical data quality report generated from a newly ingested tabular dataset:
     
@@ -82,7 +72,6 @@ async def generate_agentic_dqa_insights(
     """
 
     try:
-        # 6. Execute Secure Azure OpenAI Call with Pydantic Enforcement
         response = await client.beta.chat.completions.parse(
             model=deployment_name, 
             messages=[
@@ -92,10 +81,47 @@ async def generate_agentic_dqa_insights(
             response_format=AIQualityAssessment, 
             # temperature=0.2
         )
-        
-        # Extract the structured data and send it back to FastAPI
         return response.choices[0].message.parsed.model_dump()
-
     except Exception as exc:
         print(f"Azure AI Generation Failed: {exc}")
         return {}
+
+
+# ── 3. The Copilot Chat Logic (Handles live Q&A) ─────────────────────────
+
+async def chat_with_copilot(messages: list[dict], context_summary: str = "") -> str:
+    """
+    Handles live chat interactions for the Auditor Copilot.
+    """
+    endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
+    api_key = os.environ.get("AZURE_OPENAI_API_KEY")
+    deployment_name = os.environ.get("AZURE_OPENAI_DEPLOYMENT_NAME")
+    api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2024-08-01-preview")
+    
+    if not all([endpoint, api_key, deployment_name]):
+        return "SYSTEM OFFLINE: Azure OpenAI credentials missing."
+
+    client = AsyncAzureOpenAI(
+        azure_endpoint=endpoint,
+        api_key=api_key,
+        api_version=api_version
+    )
+
+    system_prompt = f"""
+    You are an AI Model Risk Management (MRM) Auditor Copilot advising a Chief Risk Officer. 
+    Be concise, highly technical, and reference SR 11-7 compliance where applicable.
+    If the user asks about the data, use this context: {context_summary}
+    """
+    
+    formatted_messages = [{"role": "system", "content": system_prompt}] + messages
+
+    try:
+        response = await client.chat.completions.create(
+            model=deployment_name, 
+            messages=formatted_messages,
+            # temperature=0.3
+        )
+        return response.choices[0].message.content
+    except Exception as exc:
+        print(f"Chat failed: {exc}")
+        return "I am currently experiencing a connection error to the Azure backend. Please check server logs."

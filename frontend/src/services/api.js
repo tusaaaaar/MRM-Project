@@ -84,3 +84,44 @@ export async function uploadDataQuality(file) {
     throw new Error('An unexpected error occurred during data quality assessment.')
   }
 }
+
+export async function downloadExecutivePDF(resultData) {
+  const response = await fetch('http://localhost:8000/export-pdf', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(resultData),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to generate PDF');
+  }
+
+  // Convert the response to a file (blob) and trigger browser download
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'Executive_Audit_Report.pdf';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+export async function sendChatMessage(messages, contextSummary) {
+  const response = await fetch('http://localhost:8000/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ 
+      messages: messages, 
+      context_summary: contextSummary 
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to connect to Auditor Copilot');
+  }
+
+  return await response.json();
+}
