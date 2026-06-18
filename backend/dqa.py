@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import pandas as pd
+import numpy as np
 
 # Keywords used to detect identifier columns (order = priority)
 _ID_KEYWORDS = ("id", "customer", "client", "borrower", "account", "loan")
@@ -24,6 +25,9 @@ def build_dqa_report(df: pd.DataFrame) -> dict[str, Any]:
     missing_analysis   = _build_missing_value_analysis(df)
     id_column          = _resolve_id_column(df)
     duplicate_analysis = _build_duplicate_analysis(df, id_column)
+
+    outlier_analysis   = _build_outlier_analysis(df)
+
     issue_log          = _build_issue_log(missing_analysis, duplicate_analysis, id_column)
     recommendations    = _build_recommendations(issue_log)
     dqa_assessment     = generate_dqa_assessment(
@@ -34,6 +38,7 @@ def build_dqa_report(df: pd.DataFrame) -> dict[str, Any]:
         "dataset_profile":        dataset_profile,
         "missing_value_analysis": missing_analysis,
         "duplicate_analysis":     duplicate_analysis,
+        "outlier_analysis":       outlier_analysis,
         "issue_log":              issue_log,
         "recommendations":        recommendations,
         "dqa_assessment":         dqa_assessment,
@@ -431,3 +436,60 @@ def _build_recommendations(
             })
 
     return recommendations
+
+
+def _build_outlier_analysis(df: pd.DataFrame, z_threshold: float = 3.0) -> list[dict[str, Any]]:
+    """
+    Identify numeric outliers using Z-scores and calculate percentile capping bounds.
+    Values with a Z-score > 3.0 are flagged as standard statistical outliers.
+    """
+    result = []
+    total_rows = len(df)
+    
+    # Only analyze numeric columns
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+
+    for col in numeric_cols:
+        series = df[col].dropna()
+        if len(series) == 0:
+            continue
+
+        mean = series.mean()
+        std = series.std()
+
+        # Avoid division by zero for columns with constant values
+        if std == 0:
+            continue
+
+        # Calculate Z-scores
+        z_scores = np.abs((series - mean) / std)
+        outlier_count = int((z_scores > z_threshold).sum())
+
+        if outlier_count > 0:
+            outlier_percentage = round((outlier_count / total_rows * 100), 2)
+            
+            # Capping thresholds
+            p1 = round(float(series.quantile(0.01)), 2)
+            p99 = round(float(series.quantile(0.99)), 2)
+            
+            # NEW: Five-Number Summary for Frontend Visualizations
+            min_val = round(float(series.min()), 2)
+            q1      = round(float(series.quantile(0.25)), 2)
+            median  = round(float(series.median()), 2)
+            q3      = round(float(series.quantile(0.75)), 2)
+            max_val = round(float(series.max()), 2)
+
+            result.append({
+                "column": col,
+                "outlier_count": outlier_count,
+                "outlier_percentage": outlier_percentage,
+                "suggested_cap_lower": p1,
+                "suggested_cap_upper": p99,
+                "min": min_val,   
+                "q1": q1,         
+                "median": median, 
+                "q3": q3,         
+                "max": max_val    
+            })
+    # Return sorted by highest number of outliers
+    return sorted(result, key=lambda x: x["outlier_count"], reverse=True)

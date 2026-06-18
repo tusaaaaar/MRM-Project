@@ -137,7 +137,8 @@ async def data_quality(file: UploadFile = File(...)) -> JSONResponse:
         ai_insights = await generate_agentic_dqa_insights(
             dataset_profile=dqa_raw_report.get("dataset_profile", {}),
             missing_value_log=dqa_raw_report.get("missing_value_analysis", []),
-            duplicate_log=dqa_raw_report.get("duplicate_analysis", [])
+            duplicate_log=dqa_raw_report.get("duplicate_analysis", []),
+            outlier_log=dqa_raw_report.get("outlier_analysis", [])
         )
         
         # 3. Assemble the payload mapping precisely to your React frontend
@@ -145,6 +146,7 @@ async def data_quality(file: UploadFile = File(...)) -> JSONResponse:
             "dataset_profile":        dqa_raw_report.get("dataset_profile"),
             "missing_value_analysis": dqa_raw_report.get("missing_value_analysis"),
             "duplicate_analysis":     dqa_raw_report.get("duplicate_analysis"),
+            "outlier_analysis":dqa_raw_report.get("outlier_analysis"),
             "issue_log":              dqa_raw_report.get("issue_log"),
             "recommendations":        dqa_raw_report.get("recommendations"),
             "deterministic_assessment": dqa_raw_report.get("dqa_assessment"),
