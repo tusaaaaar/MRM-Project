@@ -1,13 +1,13 @@
-
 import { useState } from 'react'
 import Sidebar from './components/Sidebar'
-import Dashboard from './pages/Dashboard'
 import DataQualityAssessment from './pages/DataQualityAssessment'
-import ScorecardAnalytics from './pages/ScorecardAnalytics'
+import ModelMonitoring from './pages/ModelMonitoring'
 import './App.css'
 
 export default function App() {
   const [activePage, setActivePage] = useState('data-quality')
+  
+  // We lift state up so the whole app shares the memory
   const [analysisResult, setAnalysisResult] = useState(null)
 
   return (
@@ -19,19 +19,13 @@ export default function App() {
           <DataQualityAssessment analysisResult={analysisResult} />
         )}
 
-        {activePage === 'dashboard' && (
-          <Dashboard
+        {/* The New Unified Enterprise Dashboard */}
+        {activePage === 'model-monitoring' && (
+          <ModelMonitoring
             analysisResult={analysisResult}
             setAnalysisResult={setAnalysisResult}
           />
         )}
-
-        {activePage === 'scorecard' && (
-          <ScorecardAnalytics
-          analysisResult={analysisResult}
-          />
-          )}
-          
 
       </div>
     </div>

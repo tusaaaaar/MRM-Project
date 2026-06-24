@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from functools import lru_cache
 from io import BytesIO
@@ -19,9 +20,10 @@ from backend.validator import validate_dataset
 from backend.pipeline import CreditRiskPipeline, PipelineError
 from backend.dqa import build_dqa_report
 
-# Import our AI Agent & PDF Generator
+# Import our AI Agents & PDF Generator
 from backend.dqa_agent import generate_agentic_dqa_insights, generate_single_feature_dossier, chat_with_copilot
 from backend.report_generator import generate_executive_pdf
+from backend.monitoring_agent import generate_monitoring_report, generate_chart_insight, generate_threshold_optimization  # <-- NEW IMPORT
 
 load_dotenv()
 
@@ -55,10 +57,6 @@ def root() -> dict[str, str]:
 # ── PDF Export Endpoint ──────────────────────────────────────────────────
 @app.post("/export-pdf")
 async def export_pdf(payload: dict, background_tasks: BackgroundTasks):
-    """
-    Receives the full analysis payload, generates a PDF, and returns it.
-    Deletes the PDF from the server immediately after sending.
-    """
     try:
         pdf_path = generate_executive_pdf(payload)
         background_tasks.add_task(os.remove, pdf_path)
@@ -80,7 +78,7 @@ class ChatMessage(BaseModel):
 class ChatPayload(BaseModel):
     messages: list[ChatMessage]
     context_summary: str = ""
-    persona: str = "Credit Risk Analyst" # Added persona routing
+    persona: str = "Credit Risk Analyst"
 
 @app.post("/chat")
 async def copilot_chat(payload: ChatPayload):
@@ -92,11 +90,11 @@ async def copilot_chat(payload: ChatPayload):
         print("CHAT ERROR:", repr(e))
         raise HTTPException(status_code=500, detail=str(e))
 
-# ── NEW: Single Feature On-Demand Dossier Endpoint ───────────────────────
+# ── Single Feature On-Demand Dossier Endpoint ───────────────────────
 class SingleFeaturePayload(BaseModel):
     feature_name: str
-    anomaly_type: str      # Changed from issue_type to match React
-    dataset_profile: dict  # Changed from stats to match React
+    anomaly_type: str      
+    dataset_profile: dict  
 
 @app.post("/generate-dossier")
 async def generate_dossier(payload: SingleFeaturePayload):
@@ -106,11 +104,50 @@ async def generate_dossier(payload: SingleFeaturePayload):
             payload.anomaly_type, 
             payload.dataset_profile
         )
-        return result # Return raw dict so React can read it directly
+        return result 
     except Exception as e:
         print("DOSSIER ERROR:", repr(e))
         raise HTTPException(status_code=500, detail=str(e))
 
+# ── NEW: Dedicated Monitoring Agent Endpoint ─────────────────────────────
+class MonitoringPayload(BaseModel):
+    history: list[dict]
+
+@app.post("/agents/monitoring")
+async def run_monitoring_agent(payload: MonitoringPayload):
+    """Triggers the SR 11-7 Model Evaluation Agent."""
+    try:
+        report = await generate_monitoring_report(payload.history)
+        return {"report_markdown": report}
+    except Exception as e:
+        print("MONITORING AGENT ERROR:", repr(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+class ChartInsightPayload(BaseModel):
+    chart_type: str
+    chart_data: Any
+
+@app.post("/agents/chart-insight")
+async def get_chart_insight(payload: ChartInsightPayload):
+    """Generates a micro-insight for a specific chart on demand."""
+    try:
+        insight = await generate_chart_insight(payload.chart_type, payload.chart_data)
+        return {"insight": insight}
+    except Exception as e:
+        print("CHART INSIGHT API ERROR:", repr(e))
+        raise HTTPException(status_code=500, detail=str(e))
+class ThresholdPayload(BaseModel):
+    confusion_matrix: dict
+
+@app.post("/agents/optimize-threshold")
+async def optimize_threshold_endpoint(payload: ThresholdPayload):
+    """Generates a prescriptive threshold shift recommendation."""
+    try:
+        recommendation = await generate_threshold_optimization(payload.confusion_matrix)
+        return {"recommendation": recommendation}
+    except Exception as e:
+        print("OPTIMIZATION API ERROR:", repr(e))
+        raise HTTPException(status_code=500, detail=str(e))
 # ── Main Data Quality Endpoints ──────────────────────────────────────────
 def build_data_quality_report(validation_result: dict[str, Any]) -> dict[str, Any]:
     issue_log = []
@@ -164,7 +201,6 @@ async def data_quality(file: UploadFile = File(...)) -> JSONResponse:
         dataframe = await _read_uploaded_dataframe(file)
         dqa_raw_report = build_dqa_report(dataframe)
         
-        # This will now only grab the top 5 for the initial load!
         ai_insights = await generate_agentic_dqa_insights(
             dataset_profile=dqa_raw_report.get("dataset_profile", {}),
             missing_value_log=dqa_raw_report.get("missing_value_analysis", []),
@@ -210,6 +246,24 @@ async def upload_dataset(
             bad_threshold=bad_threshold,
         )
         response_body = _build_response(result)
+
+        metrics = result.get("metrics", {})
+        gini = metrics.get("gini", 0)
+        auc = metrics.get("auc", 0)
+        avg_pd = dataframe["probability_of_default"].mean() if "probability_of_default" in dataframe.columns else 0
+        default_rate = dataframe["actual_default"].mean() if "actual_default" in dataframe.columns else 0
+
+        baseline_q1 = {
+            "quarter": "Q1",
+            "total_accounts": len(dataframe),
+            "avg_pd": round(float(avg_pd), 4),
+            "default_rate": round(float(default_rate), 4),
+            "gini": round(float(gini), 4),
+            "auc": round(float(auc), 4),
+        }
+        save_history([baseline_q1]) 
+        response_body["history"] = [baseline_q1]
+
         return JSONResponse(content=response_body)
     except HTTPException:
         raise
@@ -218,7 +272,6 @@ async def upload_dataset(
     except Exception as exc:
         print("ERROR:", repr(exc))
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-
 
 async def _read_uploaded_dataframe(file: UploadFile) -> pd.DataFrame:
     filename = file.filename or ""
@@ -281,3 +334,63 @@ def _build_response(result: dict[str, Any]) -> dict[str, Any]:
         ),
         "score_band_analysis": result.get("score_band_analysis"),
     }
+
+HISTORY_FILE = "model_history.json"
+
+def load_history() -> list[dict]:
+    if os.path.exists(HISTORY_FILE):
+        with open(HISTORY_FILE, "r") as f:
+            return json.load(f)
+    return []
+
+def save_history(history: list[dict]):
+    with open(HISTORY_FILE, "w") as f:
+        json.dump(history, f, indent=4)
+
+@app.post("/upload-quarter")
+async def upload_quarter(
+    file: UploadFile = File(...),
+    quarter_label: str = Form(...) 
+) -> JSONResponse:
+    try:
+        dataframe = await _read_uploaded_dataframe(file)
+        result = get_pipeline().run(dataframe)
+        
+        metrics = result.get("metrics", {})
+        gini = metrics.get("gini", 0)
+        auc = metrics.get("auc", 0)
+        avg_pd = dataframe["probability_of_default"].mean() if "probability_of_default" in dataframe else 0
+        default_rate = dataframe["actual_default"].mean() if "actual_default" in dataframe else 0
+        
+        quarter_data = {
+            "quarter": quarter_label,
+            "total_accounts": len(dataframe),
+            "avg_pd": round(float(avg_pd), 4),
+            "default_rate": round(float(default_rate), 4),
+            "gini": round(float(gini), 4),
+            "auc": round(float(auc), 4),
+        }
+        
+        history = load_history()
+        history = [h for h in history if h["quarter"] != quarter_label]
+        history.append(quarter_data)
+        save_history(history)
+        
+        full_response = _build_response(result)
+        full_response["history"] = history
+        full_response["message"] = f"{quarter_label} processed successfully"
+        
+        return JSONResponse(content=full_response)
+        
+    except Exception as exc:
+        print("QUARTER UPLOAD ERROR:", repr(exc))
+        raise HTTPException(status_code=500, detail=str(exc))
+
+@app.get("/monitoring-history")
+def get_monitoring_history():
+    return JSONResponse(content={"history": load_history()})
+
+@app.delete("/clear-history")
+def clear_monitoring_history():
+    save_history([])
+    return JSONResponse(content={"message": "History cleared."})
