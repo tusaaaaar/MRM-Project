@@ -56,9 +56,9 @@ export default function Sidebar({ activePage, onNavigate }) {
 
         <div className="cr-sidebar__brand">
           <div className="cr-sidebar__mark" aria-hidden="true">
-            CR
+            MRM
           </div>
-          <p className="cr-sidebar__name">Credit Risk</p>
+          {/* <p className="cr-sidebar__name"> MRM </p> */}
         </div>
       </div>
 
@@ -200,7 +200,7 @@ const CSS = `
   --speed: 220ms;
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
 
-  width: 260px;
+  width: 220px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -267,15 +267,29 @@ const CSS = `
 
 .cr-sidebar__mark {
   flex-shrink: 0;
-  width: 30px;
-  height: 30px;
-  border-radius: 7px;
+  width: 45px;
+  height: 40px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+cr-sidebar.is-collapsed .cr-sidebar__mark {
+  flex-shrink: 0;
+  width: 45px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: 0.03em;
   background: var(--accent-soft);
   color: var(--accent-text);
 }

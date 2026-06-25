@@ -20,7 +20,7 @@ class RemediationRecommendation(BaseModel):
     confidence_level: str = Field(description="AI confidence percentage (e.g., '95%').")
     risk_impact: str = Field(description="Risk if left untreated: 'High', 'Medium', or 'Low'.")
     expected_outcome: str = Field(description="What happens after applying this fix (e.g., 'Retains 98% of variance').")
-
+    business_impact: str = Field(description="WARNING: You must list the NEGATIVE consequences, financial damage, or regulatory risks if this anomaly is IGNORED. Frame this as a warning (e.g., 'Causes inflated exposure', 'Leads to regulatory fines'). Do NOT list the benefits of fixing it.")
 class AIQualityAssessment(BaseModel):
     executive_summary: str = Field(description="A 2-sentence board-ready assessment of the dataset's health.")
     business_impact: str = Field(description="How these data issues affect downstream business decisions and bottom line.")
@@ -107,6 +107,7 @@ async def generate_single_feature_dossier(feature_name: str, anomaly_type: str, 
     
     Provide a highly specific, context-aware remediation strategy.
     Formatting Rule: Your 'strategy' MUST be a short 5-7 word title. Your 'justification' MUST be 2-3 crisp bullet points starting with a dash (-) explaining why it is better than a baseline dropna() approach.
+    Crucially, explicitly define the 'business_impact' MUST be 2-3 crisp bullet points starting with a dash (-) pinpointing the financial or regulatory risk if this data is fed into a live model.
     """
 
     try:
@@ -124,6 +125,8 @@ async def generate_single_feature_dossier(feature_name: str, anomaly_type: str, 
         print(f"Azure AI Single Feature Generation Failed: {exc}")
         return {}
 
+
+# ── 4. The Upgraded Persona-Driven Chat Logic ────────────────────────────
 
 # ── 4. The Upgraded Persona-Driven Chat Logic ────────────────────────────
 
@@ -154,8 +157,14 @@ async def chat_with_copilot(messages: list[dict], context_summary: str = "", per
     2. Use bullet points if listing more than two items.
     3. Be crisp, direct, and action-oriented. No fluff.
     4. Base your answers heavily on the Dashboard Context provided below.
-    5. CRITICAL INSTRUCTION: At the very end of your response, you MUST provide exactly two logical follow-up questions the user could ask next. Append them using the exact delimiter `|||` like this:
+    5. At the very end of your response, you MUST provide exactly two logical follow-up questions the user could ask next. Append them using the exact delimiter `|||` like this:
        [Your main response text here]|||[First suggested question?]|||[Second suggested question?]
+    
+    6. CRITICAL ACTION TRIGGER RULE: 
+       If the user explicitly asks you to FIX, IMPUTE, BIN, or MODIFY the dataset, you MUST include a secret trigger string in your response.
+       - If they ask to BIN or SEGMENT data, include: `|||ACTION:BIN_DATA|||`
+       - If they ask to IMPUTE, FILL, or FIX MISSING data, include: `|||ACTION:IMPUTE_MISSING|||`
+       You MUST output this string. Do not just explain how to do it. Actually output the trigger!
     
     Dashboard Context: {context_summary}
     """

@@ -1,7 +1,7 @@
 import axios from 'axios'
 
-// const API_BASE_URL = 'http://127.0.0.1:8000'
-const API_BASE_URL = 'http://192.168.1.6:8000'
+import { API_BASE_URL } from '../config';
+
 const UPLOAD_ENDPOINT = `${API_BASE_URL}/upload`
 const DATA_QUALITY_ENDPOINT = `${API_BASE_URL}/data-quality`
 

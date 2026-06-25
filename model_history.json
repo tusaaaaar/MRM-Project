@@ -1,10 +1,1 @@
-[
-    {
-        "quarter": "Q1",
-        "total_accounts": 30000,
-        "avg_pd": 0.2245,
-        "default_rate": 0.2257,
-        "gini": 0.4991,
-        "auc": 0.7495
-    }
-]
+[]

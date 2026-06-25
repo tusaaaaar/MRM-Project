@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import uuid
+from fastapi.responses import FileResponse, JSONResponse
+
+GLOBAL_DF = None
+
 import json
 import os
 from functools import lru_cache
@@ -23,8 +28,7 @@ from backend.dqa import build_dqa_report
 # Import our AI Agents & PDF Generator
 from backend.dqa_agent import generate_agentic_dqa_insights, generate_single_feature_dossier, chat_with_copilot
 from backend.report_generator import generate_executive_pdf
-from backend.monitoring_agent import generate_monitoring_report, generate_chart_insight, generate_threshold_optimization  # <-- NEW IMPORT
-
+from backend.monitoring_agent import generate_monitoring_report, generate_chart_insight, generate_threshold_optimization, monitoring_chat_copilot
 load_dotenv()
 
 ALLOWED_EXTENSIONS = {".csv", ".xlsx"}
@@ -82,9 +86,38 @@ class ChatPayload(BaseModel):
 
 @app.post("/chat")
 async def copilot_chat(payload: ChatPayload):
+    global GLOBAL_DF
     try:
         msgs = [{"role": m.role, "content": m.content} for m in payload.messages]
         reply = await chat_with_copilot(msgs, payload.context_summary, payload.persona)
+        
+        # --- THE MAGIC INTERCEPTOR ---
+        if "|||ACTION:BIN_DATA|||" in reply and GLOBAL_DF is not None:
+            df_binned = GLOBAL_DF.copy()
+            numeric_cols = df_binned.select_dtypes(include=['number']).columns
+            if len(numeric_cols) > 0:
+                col_to_bin = numeric_cols[0]
+                df_binned[f"{col_to_bin}_Risk_Bands"] = pd.qcut(df_binned[col_to_bin], q=3, labels=["Low Risk", "Medium Risk", "High Risk"], duplicates='drop')
+                
+                file_id = str(uuid.uuid4())
+                os.makedirs("tmp", exist_ok=True)
+                df_binned.to_csv(f"tmp/remediated_{file_id}.csv", index=False)
+                reply = reply.replace("|||ACTION:BIN_DATA|||", f"|||DOWNLOAD_FILE:{file_id}|||")
+
+        elif "|||ACTION:IMPUTE_MISSING|||" in reply and GLOBAL_DF is not None:
+            df_imputed = GLOBAL_DF.copy()
+            
+            # Find columns with nulls and fill with median
+            cols_with_nulls = df_imputed.columns[df_imputed.isnull().any()]
+            for col in cols_with_nulls:
+                if pd.api.types.is_numeric_dtype(df_imputed[col]):
+                    df_imputed[col] = df_imputed[col].fillna(df_imputed[col].median())
+            
+            file_id = str(uuid.uuid4())
+            os.makedirs("tmp", exist_ok=True)
+            df_imputed.to_csv(f"tmp/remediated_{file_id}.csv", index=False)
+            reply = reply.replace("|||ACTION:IMPUTE_MISSING|||", f"|||DOWNLOAD_FILE:{file_id}|||")
+        
         return {"reply": reply}
     except Exception as e:
         print("CHAT ERROR:", repr(e))
@@ -148,6 +181,17 @@ async def optimize_threshold_endpoint(payload: ThresholdPayload):
     except Exception as e:
         print("OPTIMIZATION API ERROR:", repr(e))
         raise HTTPException(status_code=500, detail=str(e))
+    
+@app.post("/chat-monitoring")
+async def chat_monitoring_endpoint(payload: ChatPayload):
+    try:
+        msgs = [{"role": m.role, "content": m.content} for m in payload.messages]
+        reply = await monitoring_chat_copilot(msgs, payload.context_summary, payload.persona)
+        return {"reply": reply}
+    except Exception as e:
+        print("MONITORING CHAT ERROR:", repr(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ── Main Data Quality Endpoints ──────────────────────────────────────────
 def build_data_quality_report(validation_result: dict[str, Any]) -> dict[str, Any]:
     issue_log = []
@@ -195,10 +239,19 @@ def build_data_quality_report(validation_result: dict[str, Any]) -> dict[str, An
         "recommendations": recommendations,
     }
 
+@app.get("/download/{file_id}")
+async def download_remediated_file(file_id: str):
+    file_path = f"tmp/remediated_{file_id}.csv"
+    if os.path.exists(file_path):
+        return FileResponse(path=file_path, filename="AI_Remediated_Portfolio.csv", media_type='text/csv')
+    raise HTTPException(status_code=404, detail="File not found.")
+
 @app.post("/data-quality")
 async def data_quality(file: UploadFile = File(...)) -> JSONResponse:
+    global GLOBAL_DF
     try:
         dataframe = await _read_uploaded_dataframe(file)
+        GLOBAL_DF = dataframe.copy()
         dqa_raw_report = build_dqa_report(dataframe)
         
         ai_insights = await generate_agentic_dqa_insights(

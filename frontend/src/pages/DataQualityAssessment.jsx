@@ -6,6 +6,8 @@ import {
   BarChart, Bar, PieChart, Pie, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend 
 } from 'recharts'
 
+import { API_BASE_URL } from '../config';
+
 function formatCount(value) {
   if (value == null || Number.isNaN(Number(value))) return '—'
   return Number(value).toLocaleString()
@@ -26,7 +28,14 @@ const SEVERITY_STYLES = {
 function SeverityBadge({ severity }) {
   const s = SEVERITY_STYLES[severity] || SEVERITY_STYLES.Low
   return (
-    <span style={{ padding: '3px 10px', borderRadius: '999px', fontSize: '11px', fontWeight: 700, background: s.bg, color: s.text, border: `1px solid ${s.border}`, whiteSpace: 'nowrap' }}>
+    <span
+      className="dqa-severity-badge"
+      style={{
+        '--severity-bg': s.bg,
+        '--severity-text': s.text,
+        '--severity-border': s.border,
+      }}
+    >
       {severity || 'Low'}
     </span>
   )
@@ -34,17 +43,17 @@ function SeverityBadge({ severity }) {
 
 const CustomTooltip = ({ active, payload }) => {
   if (active && payload && payload.length) {
-    const data = payload[0].payload;
+    const data = payload[0].payload
     return (
-      <div style={{ background: '#fff', border: '1px solid #e2e8f0', padding: '12px', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', fontSize: '13px' }}>
-        <strong style={{ color: '#0f172a', display: 'block', marginBottom: '6px' }}>{data.name || data.subject}</strong>
-        {data.count !== undefined && <span style={{ color: '#475569', display: 'block' }}>Count: <strong>{formatCount(data.count)}</strong></span>}
-        {data.x !== undefined && <span style={{ color: '#475569', display: 'block' }}>Impact: <strong>{data.x}%</strong></span>}
-        {data.value !== undefined && <span style={{ color: '#475569', display: 'block' }}>Value: <strong>{data.value}</strong></span>}
+      <div className="dqa-tooltip">
+        <strong className="dqa-tooltip__title">{data.name || data.subject}</strong>
+        {data.count !== undefined && <span className="dqa-tooltip__line">Count: <strong>{formatCount(data.count)}</strong></span>}
+        {data.x !== undefined && <span className="dqa-tooltip__line">Impact: <strong>{data.x}%</strong></span>}
+        {data.value !== undefined && <span className="dqa-tooltip__line">Value: <strong>{data.value}</strong></span>}
       </div>
-    );
+    )
   }
-  return null;
+  return null
 }
 
 export default function DataQualityAssessment() {
@@ -54,7 +63,7 @@ export default function DataQualityAssessment() {
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   
-  const [activeTab, setActiveTab] = useState('outliers') 
+  const [activeTab, setActiveTab] = useState('missing') 
   const [activeFeature, setActiveFeature] = useState(null)
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
@@ -66,7 +75,7 @@ export default function DataQualityAssessment() {
   const [isChatLoading, setIsChatLoading] = useState(false)
   const [chatPersona, setChatPersona] = useState('Credit Risk Analyst')
   const [chatMessages, setChatMessages] = useState([
-    { role: 'assistant', content: 'Hello! I am your AI MRM Auditor Copilot. Select a quick prompt below or ask me a specific question about the dataset.' }
+    { role: 'assistant', content: 'Hello! I am your AI Remediation Agent. Select a quick prompt below or ask me a specific question about the dataset.' }
   ])
 
   const messagesEndRef = useRef(null)
@@ -108,8 +117,8 @@ export default function DataQualityAssessment() {
   useEffect(() => {
     if (!resultData) return;
     try {
-      if (activeTab === 'outliers' && resultData.outlier_analysis?.length > 0) setActiveFeature(resultData.outlier_analysis[0].column);
-      else if (activeTab === 'missing' && resultData.missing_value_analysis?.length > 0) setActiveFeature(resultData.missing_value_analysis[0].column);
+      if (activeTab === 'missing' && resultData.missing_value_analysis?.length > 0) setActiveFeature(resultData.missing_value_analysis[0].column);
+      else if (activeTab === 'outliers' && resultData.outlier_analysis?.length > 0) setActiveFeature(resultData.outlier_analysis[0].column);
       else if (activeTab === 'duplicates' && resultData.duplicate_analysis?.length > 0) setActiveFeature(resultData.duplicate_analysis[0].customer_id || 'Dup_01');
       else setActiveFeature(null);
     } catch (e) {
@@ -318,7 +327,7 @@ export default function DataQualityAssessment() {
           <div style={{ maxWidth: '800px', margin: '60px auto' }}>
             <section style={{ padding: '40px', textAlign: 'center', background: '#fff', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
               <h2 style={{ fontSize: '24px', color: '#0f172a', marginBottom: '8px' }}>Model Risk Data Assessment</h2>
-              <p style={{ color: '#64748b', marginBottom: '32px' }}>Upload a portfolio file to initiate the SR 11-7 compliance check.</p>
+              <p style={{ color: '#64748b', marginBottom: '32px' }}>Upload a portfolio file to initiate the compliance check.</p>
               <input ref={fileInputRef} type="file" accept=".csv,.xlsx" onChange={handleFileChange} style={{ display: 'none' }} />
               <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
                 <button onClick={() => fileInputRef.current?.click()} style={{ padding: '10px 20px', background: '#e2e8f0', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', border: 'none' }}>{selectedFile ? selectedFile.name : 'Choose File'}</button>
@@ -335,7 +344,7 @@ export default function DataQualityAssessment() {
               <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
             </svg>
             <h3 style={{ margin: 0, fontSize: '20px', color: '#0f172a', fontWeight: 700 }}>Executing AI Analysis...</h3>
-            <p style={{ marginTop: '8px', fontSize: '15px', color: '#64748b' }}>Running statistical integrity checks and SR 11-7 validation.</p>
+            <p style={{ marginTop: '8px', fontSize: '15px', color: '#64748b' }}>Running statistical integrity checks and risk validation.</p>
           </div>
         )}
 
@@ -374,7 +383,7 @@ export default function DataQualityAssessment() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '24px', marginBottom: '24px' }}>
+            {/* <div style={{ display: 'flex', gap: '24px', marginBottom: '24px' }}>
               <div style={{ flex: 1, background: '#fff', padding: '16px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', borderLeft: '4px solid #f59e0b' }}>
                 <h3 style={{ margin: '0 0 4px 0', fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Compliance Risk</h3>
                 <p style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>Moderate (Amber) - Review Recommended</p>
@@ -383,11 +392,14 @@ export default function DataQualityAssessment() {
                 <h3 style={{ margin: '0 0 4px 0', fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Downstream Impact</h3>
                 <p style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>IFRS 9 Expected Credit Loss Engines</p>
               </div>
-            </div>
+            </div> */}
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(600px, 1fr))', gap: '24px', marginBottom: '24px' }}>
               <div style={{ background: '#fff', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 16px 0', color: '#0f172a', textTransform: 'uppercase' }}>Anomaly Spread (Z-Score &gt; 3.0)</h3>
+                <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 4px 0', color: '#0f172a', textTransform: 'uppercase' }}>Variable-Level Anomaly Detection</h3>
+                <p style={{fontSize: '13.5px',color: '#64748b',marginTop: '2px',marginBottom: '18px'}}>
+                    Percentage of records with extreme observations (Z-score &gt; 3) across monitored variables.
+                </p>
                 <div style={{ width: '100%', height: '220px' }}>
                   <ResponsiveContainer>
                     <ScatterChart margin={{ top: 10, right: 20, bottom: 0, left: 20 }}>
@@ -405,7 +417,10 @@ export default function DataQualityAssessment() {
                 </div>
               </div>
               <div style={{ background: '#fff', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 16px 0', color: '#0f172a', textTransform: 'uppercase' }}>Top Missing Data Features</h3>
+                <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 4px 0', color: '#0f172a', textTransform: 'uppercase' }}>Critical Missing Data Hotspots</h3>
+                <p style={{fontSize: '13.5px',color: '#64748b',marginTop: '2px',marginBottom: '18px'}}>
+                  Higher missing rates may affect model reliability, calibration, and risk assessment accuracy.
+                </p>
                 <div style={{ width: '100%', height: '220px' }}>
                   {missingBarData.length > 0 ? (
                     <ResponsiveContainer>
@@ -423,7 +438,10 @@ export default function DataQualityAssessment() {
                 </div>
               </div>
               <div style={{ background: '#fff', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' }}>
-                <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 16px 0', color: '#0f172a', textTransform: 'uppercase' }}>SR 11-7 Quality Dimensions</h3>
+                <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 4px 0', color: '#0f172a', textTransform: 'uppercase' }}>Data Quality Health Assessment</h3>
+                <p style={{fontSize: '13.5px',color: '#64748b',marginTop: '2px',marginBottom: '18px'}}>
+                    Assessment of key data quality dimensions aligned with model risk management and governance expectations.
+                </p>
                 <div style={{ width: '100%', height: '220px', display: 'flex', justifyContent: 'center' }}>
                   <ResponsiveContainer width="80%" height="100%">
                     <RadarChart outerRadius={70} data={radarData}>
@@ -437,7 +455,10 @@ export default function DataQualityAssessment() {
                 </div>
               </div>
               <div style={{ background: '#fff', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' }}>
-                <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 16px 0', color: '#0f172a', textTransform: 'uppercase' }}>Issue Severity Breakdown</h3>
+                <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 4px 0', color: '#0f172a', textTransform: 'uppercase' }}>Data Quality Risk Exposure</h3>
+                <p style={{fontSize: '13.5px',color: '#64748b',marginTop: '2px',marginBottom: '18px'}}>
+                    Highlights concentration of data quality risks requiring remediation.
+                </p>
                 <div style={{ width: '100%', height: '220px' }}>
                   <ResponsiveContainer>
                     <PieChart>
@@ -455,11 +476,11 @@ export default function DataQualityAssessment() {
             <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
               <div style={{ flex: '1 1 400px', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
                 <div style={{ display: 'flex', background: '#f1f5f9', borderBottom: '1px solid #e2e8f0' }}>
-                  <button onClick={() => setActiveTab('outliers')} style={{ flex: 1, padding: '14px 0', background: activeTab === 'outliers' ? '#fff' : 'transparent', border: 'none', borderBottom: activeTab === 'outliers' ? '2px solid #2563eb' : '2px solid transparent', fontWeight: 700, fontSize: '13px', color: activeTab === 'outliers' ? '#2563eb' : '#64748b', cursor: 'pointer' }}>
-                    Outliers ({resultData?.outlier_analysis?.length || 0})
-                  </button>
                   <button onClick={() => setActiveTab('missing')} style={{ flex: 1, padding: '14px 0', background: activeTab === 'missing' ? '#fff' : 'transparent', border: 'none', borderBottom: activeTab === 'missing' ? '2px solid #2563eb' : '2px solid transparent', fontWeight: 700, fontSize: '13px', color: activeTab === 'missing' ? '#2563eb' : '#64748b', cursor: 'pointer' }}>
                     Missing Data ({resultData?.missing_value_analysis?.length || 0})
+                  </button>
+                  <button onClick={() => setActiveTab('outliers')} style={{ flex: 1, padding: '14px 0', background: activeTab === 'outliers' ? '#fff' : 'transparent', border: 'none', borderBottom: activeTab === 'outliers' ? '2px solid #2563eb' : '2px solid transparent', fontWeight: 700, fontSize: '13px', color: activeTab === 'outliers' ? '#2563eb' : '#64748b', cursor: 'pointer' }}>
+                    Outliers ({resultData?.outlier_analysis?.length || 0})
                   </button>
                   <button onClick={() => setActiveTab('duplicates')} style={{ flex: 1, padding: '14px 0', background: activeTab === 'duplicates' ? '#fff' : 'transparent', border: 'none', borderBottom: activeTab === 'duplicates' ? '2px solid #2563eb' : '2px solid transparent', fontWeight: 700, fontSize: '13px', color: activeTab === 'duplicates' ? '#2563eb' : '#64748b', cursor: 'pointer' }}>
                     Duplicates ({resultData?.duplicate_analysis?.length || 0})
@@ -499,7 +520,7 @@ export default function DataQualityAssessment() {
                     
                     <div style={{ padding: '24px' }}>
                       <div style={{ padding: '16px', background: '#f1f5f9', borderRadius: '8px', border: '1px dashed #cbd5e1', marginBottom: '24px' }}>
-                        <span style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>Standard Rule-Based Baseline</span>
+                        <span style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}> Rule-Based Remediation</span>
                         <p style={{ margin: 0, fontSize: '13px', color: '#475569' }}>
                           {activeTab === 'outliers' && 'Remove rows containing statistical outliers (Z-Score > 3.0) to normalize distribution.'}
                           {activeTab === 'missing' && 'Apply generic mean imputation or drop records containing null values.'}
@@ -519,7 +540,7 @@ export default function DataQualityAssessment() {
                           
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', borderBottom: '1px solid #e2e8f0', paddingBottom: '16px' }}>
                             <div style={{ flex: 1, paddingRight: '20px' }}>
-                              <span style={{ display: 'inline-block', fontSize: '10px', fontWeight: 800, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: '0.05em', background: '#dbeafe', padding: '4px 8px', borderRadius: '4px', marginBottom: '8px' }}>✨ AI Override Strategy</span>
+                              <span style={{ display: 'inline-block', fontSize: '10px', fontWeight: 800, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: '0.05em', background: '#dbeafe', padding: '4px 8px', borderRadius: '4px', marginBottom: '8px' }}>✨ AI Recommended Remediation</span>
                               <h4 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#0f172a', lineHeight: 1.3 }}>
                                 {activeAIData ? activeAIData.strategy : 'No Actionable Override Generated'}
                               </h4>
@@ -540,9 +561,18 @@ export default function DataQualityAssessment() {
                           </div>
 
                           <div style={{ marginBottom: '20px' }}>
-                            <h5 style={{ margin: '0 0 8px 0', fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Mathematical Justification</h5>
+                            <h5 style={{ margin: '0 0 8px 0', fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Justification for Remediation</h5>
                             <div style={{ fontSize: '14px', color: '#334155', lineHeight: 1.7, whiteSpace: 'pre-line' }}>
                               {activeAIData ? activeAIData.justification : 'The baseline statistical rule is sufficient.'}
+                            </div>
+                          </div>
+
+                          <div style={{ marginTop: '20px', marginBottom: '20px', padding: '16px', background: '#fff1f2', borderRadius: '8px', border: '1px solid #fda4af' }}>
+                            <h5 style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#9f1239', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 800 }}>
+                              Business Impact if Unresolved
+                            </h5>
+                            <div style={{ fontSize: '14px', color: '#881337', lineHeight: 1.6, fontWeight: 300, whiteSpace: 'pre-line' }}>
+                              {activeAIData ? activeAIData.business_impact : 'No impact analysis provided.'}
                             </div>
                           </div>
                           
@@ -570,7 +600,7 @@ export default function DataQualityAssessment() {
 
                           {activeTab === 'missing' && activeMissingData && (
                             <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px dashed #cbd5e1' }}>
-                              <span style={{ display: 'block', fontSize: '11px', color: '#64748b', textTransform: 'uppercase', marginBottom: '12px' }}>Feature Completeness Matrix</span>
+                              <span style={{ display: 'block', fontSize: '11px', color: '#64748b', textTransform: 'uppercase', marginBottom: '12px' }}>Affected Data Volume</span>
                               <div style={{ width: '100%', height: '8px', background: '#e2e8f0', borderRadius: '999px', overflow: 'hidden', display: 'flex' }}>
                                 <div style={{ width: `${validPct}%`, background: '#22c55e', height: '100%' }} title={`Valid: ${validPct}%`} />
                                 <div style={{ width: `${missingPct}%`, background: '#ef4444', height: '100%' }} title={`Missing: ${missingPct}%`} />
@@ -607,7 +637,7 @@ export default function DataQualityAssessment() {
 
         {result && !isChatOpen && (
           <button onClick={() => setIsChatOpen(true)} style={{ position: 'fixed', right: '24px', bottom: '32px', zIndex: 1000, background: '#2563eb', color: '#fff', border: 'none', borderRadius: '50px', padding: '14px 24px', fontWeight: 700, cursor: 'pointer', boxShadow: '0 10px 15px rgba(37,99,235,0.3)', transition: 'transform 0.2s' }}>
-            💬 Ask Auditor Copilot
+            💬 Remediation Agent
           </button>
         )}
 
@@ -615,7 +645,7 @@ export default function DataQualityAssessment() {
           
           <div style={{ padding: '20px 24px', background: '#0f172a', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 style={{ margin: 0, fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '18px' }}>✨</span> Auditor Copilot
+              <span style={{ fontSize: '18px' }}>✨</span> Remediation Agent
             </h3>
             <button onClick={() => setIsChatOpen(false)} style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '24px', cursor: 'pointer', padding: 0, lineHeight: 1 }}>&times;</button>
           </div>
@@ -637,11 +667,17 @@ export default function DataQualityAssessment() {
 
           <div style={{ flex: 1, padding: '24px', overflowY: 'auto', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '20px' }}>
             
-            {/* ── UPGRADED: Chat Splitting Logic for Follow-Up Chips ── */}
+            {/* ── UPGRADED: Chat Splitting Logic for Follow-Up Chips & Downloads ── */}
             {chatMessages.map((msg, idx) => {
               const parts = msg.content.split('|||');
               const mainContent = parts[0];
-              const followUps = parts.slice(1).map(f => f.trim()).filter(f => f.length > 0);
+              
+              // Extract the file ID if the AI triggered a download
+              const downloadPart = parts.find(p => p.includes("DOWNLOAD_FILE:"));
+              const fileId = downloadPart ? downloadPart.replace("DOWNLOAD_FILE:", "").trim() : null;
+
+              // Filter out empty strings AND the secret download trigger
+              const followUps = parts.slice(1).map(f => f.trim()).filter(f => f.length > 0 && !f.startsWith("DOWNLOAD_FILE:"));
               const isLastMessage = idx === chatMessages.length - 1;
 
               return (
@@ -657,6 +693,19 @@ export default function DataQualityAssessment() {
                         <ReactMarkdown>{mainContent}</ReactMarkdown>
                       ) : (
                         mainContent
+                      )}
+
+                      {/* ── THE SHINY DOWNLOAD BUTTON ── */}
+                      {fileId && (
+                        <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #e2e8f0' }}>
+                          <a 
+                            href={`${API_BASE_URL}/download/${fileId}`} 
+                            download 
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: '#10b981', color: '#fff', padding: '10px 16px', borderRadius: '8px', textDecoration: 'none', fontWeight: 700, fontSize: '13px', boxShadow: '0 4px 6px rgba(16, 185, 129, 0.2)', border: '1px solid #059669', transition: 'all 0.2s' }}
+                          >
+                            <span style={{ fontSize: '16px' }}>📥</span> Download Cleaned CSV
+                          </a>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -710,6 +759,82 @@ export default function DataQualityAssessment() {
             
             <div ref={messagesEndRef} />
           </div>
+
+          {/* <div style={{ flex: 1, padding: '24px', overflowY: 'auto', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            
+            // {/* ── UPGRADED: Chat Splitting Logic for Follow-Up Chips ── }
+            {chatMessages.map((msg, idx) => {
+              const parts = msg.content.split('|||');
+              const mainContent = parts[0];
+              const followUps = parts.slice(1).map(f => f.trim()).filter(f => f.length > 0);
+              const isLastMessage = idx === chatMessages.length - 1;
+
+              return (
+                <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start', width: '100%' }}>
+                  
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', flexDirection: msg.role === 'user' ? 'row-reverse' : 'row', width: '100%' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: msg.role === 'user' ? '#dbeafe' : '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '16px' }}>
+                      {msg.role === 'user' ? '👤' : '🤖'}
+                    </div>
+                    
+                    <div className={msg.role === 'assistant' ? 'markdown-body' : ''} style={{ background: msg.role === 'user' ? '#2563eb' : '#fff', color: msg.role === 'user' ? '#fff' : '#0f172a', padding: '14px 18px', borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px', fontSize: '13.5px', lineHeight: 1.5, border: msg.role === 'assistant' ? '1px solid #e2e8f0' : 'none', boxShadow: '0 2px 4px rgba(0,0,0,0.04)', maxWidth: '85%' }}>
+                      {msg.role === 'assistant' ? (
+                        <ReactMarkdown>{mainContent}</ReactMarkdown>
+                      ) : (
+                        mainContent
+                      )}
+                    </div>
+                  </div>
+
+                  // {/* ── The Dynamic Follow-Up Chips! ── }
+                  {msg.role === 'assistant' && isLastMessage && followUps.length > 0 && !isChatLoading && (
+                    <div style={{ display: 'flex', gap: '8px', paddingLeft: '44px', flexWrap: 'wrap', marginTop: '4px' }}>
+                      {followUps.map((chip, cIdx) => (
+                        <button 
+                          key={cIdx} 
+                          onClick={() => handleQuickPrompt(chip)}
+                          style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '999px', fontSize: '11px', color: '#2563eb', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}
+                          onMouseOver={(e) => { e.currentTarget.style.background = '#eff6ff'; e.currentTarget.style.borderColor = '#93c5fd'; }}
+                          onMouseOut={(e) => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#cbd5e1'; }}
+                        >
+                          {chip}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                </div>
+              )
+            })}
+
+            {chatMessages.length === 1 && !isChatLoading && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '10px' }}>
+                {getQuickPrompts().map((prompt, idx) => (
+                  <button 
+                    key={idx} 
+                    onClick={() => handleQuickPrompt(prompt)}
+                    style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '12px', borderRadius: '8px', fontSize: '12.5px', color: '#334155', textAlign: 'left', cursor: 'pointer', transition: 'all 0.2s', lineHeight: 1.4, boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}
+                    onMouseOver={(e) => { e.currentTarget.style.borderColor = '#2563eb'; e.currentTarget.style.color = '#1d4ed8'; }}
+                    onMouseOut={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#334155'; }}
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {isChatLoading && (
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                 <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>🤖</div>
+                 <div style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                   <svg className="loading-spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
+                   Analyzing context...
+                 </div>
+              </div>
+            )}
+            
+            <div ref={messagesEndRef} />
+          </div> */}
 
           <div style={{ padding: '16px 20px', borderTop: '1px solid #e2e8f0', background: '#fff' }}>
             <form onSubmit={handleSendMessage} style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
