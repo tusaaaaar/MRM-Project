@@ -191,3 +191,52 @@ async def monitoring_chat_copilot(messages: list[dict], context_summary: str = "
     except Exception as exc:
         print(f"Monitoring Chat failed: {exc}")
         return "Connection error to the Azure backend."
+    
+async def generate_detailed_monitoring_report(history: list[dict]) -> str:
+    """Generates a massive, deeply analytical report intended for PDF export."""
+    import os
+    import json
+    from openai import AsyncAzureOpenAI
+    
+    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+    api_key = os.getenv("AZURE_OPENAI_API_KEY")
+    deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
+    api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
+
+    # 1. Check if keys are missing
+    if not all([endpoint, api_key, deployment_name]):
+        return "⚠️ Azure OpenAI credentials are missing in the environment."
+
+    client = AsyncAzureOpenAI(azure_endpoint=endpoint, api_key=api_key, api_version=api_version)
+
+    system_prompt = """
+    Role: You are a Lead Model Risk Validator conducting an exhaustive SR 11-7 compliance audit.
+    
+    Task: The user is downloading a DETAILED PDF report. You must provide a highly comprehensive, multi-page deep-dive analysis of the historical data provided. 
+    Do NOT write a short summary. Expand extensively on:
+    1. Methodological drift and long-term Gini/AUC decay.
+    2. Exact quarter-over-quarter deterioration metrics.
+    3. Population Stability Index (PSI) deep-dive and segment shifts.
+    4. Calibration Gap analysis (Predicted PD vs Actual Default).
+    5. A strict, step-by-step technical remediation plan for the data engineering team.
+    
+    Format: Use professional markdown, extensive bullet points, and authoritative regulatory tone.
+    """
+
+    user_prompt = f"Historical Data:\n{json.dumps(history, indent=2)}"
+
+    try:
+        response = await client.chat.completions.create(
+            model=deployment_name,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            # I have commented this out. If your model doesn't support it, it causes a silent crash!
+            # max_tokens=2500 
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        # 2. Return the EXACT Python error so it prints directly into your PDF!
+        print(f"DETAILED REPORT ERROR: {repr(e)}")
+        return f"### AI Generation Failed\n\n**Error Details:**\n{str(e)}"
